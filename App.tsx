@@ -802,27 +802,35 @@ const App: React.FC = () => {
             const DOUBLE_TAP_DELAY = 300;
             const FOOD_COLORS = ['#c27b4f', '#a4653e', '#8b5a2b', '#D2691E'];
 
-            if (now - lastTap.current < DOUBLE_TAP_DELAY) {
-                if (model.food.length > 9) return;
-                audio.playFeed();
-                const newFoods: Food[] = Array.from({ length: 3 }, (_, i) => ({
-                    id: Date.now() + i, x: x + (Math.random() - 0.5) * 30, y: waterTopPx - 10,
-                    vx: (Math.random() - 0.5) * 15, vy: (Math.random() * -5), state: 'falling', life: 15,
-                    color: FOOD_COLORS[Math.floor(Math.random() * FOOD_COLORS.length)]
-                }));
-                model.food.push(...newFoods);
+            const pokedPet = model.pets.find(p => p.isAlive && Math.hypot(x - p.x, y - p.y) < 50 * p.scale);
+            
+            if (pokedPet) {
+                audio.playPoke();
+                const fleeDx = pokedPet.x - x; const fleeDy = pokedPet.y - y; const fleeDist = Math.hypot(fleeDx, fleeDy) || 1;
+                const impulse = 250;
+                pokedPet.vx += (fleeDx / fleeDist) * impulse;
+                pokedPet.vy += (fleeDy / fleeDist) * impulse;
+                pokedPet.target = null;
+                // A poke should not count as the first tap of a double-tap. Reset the timer.
+                lastTap.current = 0;
             } else {
-                const pokedPet = model.pets.find(p => p.isAlive && Math.hypot(x - p.x, y - p.y) < 50 * p.scale);
-                if (pokedPet) {
-                    audio.playPoke();
-                    const fleeDx = pokedPet.x - x; const fleeDy = pokedPet.y - y; const fleeDist = Math.hypot(fleeDx, fleeDy) || 1;
-                    const impulse = 250;
-                    pokedPet.vx += (fleeDx / fleeDist) * impulse;
-                    pokedPet.vy += (fleeDy / fleeDist) * impulse;
-                    pokedPet.target = null;
+                // Not a poke, so check for double-tap-to-feed.
+                if (now - lastTap.current < DOUBLE_TAP_DELAY) {
+                    if (model.food.length > 9) return;
+                    audio.playFeed();
+                    const newFoods: Food[] = Array.from({ length: 3 }, (_, i) => ({
+                        id: Date.now() + i, x: x + (Math.random() - 0.5) * 30, y: waterTopPx - 10,
+                        vx: (Math.random() - 0.5) * 15, vy: (Math.random() * -5), state: 'falling', life: 15,
+                        color: FOOD_COLORS[Math.floor(Math.random() * FOOD_COLORS.length)]
+                    }));
+                    model.food.push(...newFoods);
+                    // Reset tap timer after feeding to prevent a third tap from also feeding.
+                    lastTap.current = 0;
+                } else {
+                    // It's a single tap on empty water. Register it for a potential double-tap.
+                    lastTap.current = now;
                 }
             }
-            lastTap.current = now;
         }
     };
 
