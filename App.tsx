@@ -301,121 +301,103 @@ function drawCleaningHand(ctx: CanvasRenderingContext2D, progress: number) {
     const canvas = ctx.canvas;
     ctx.save();
 
+    // Easing for smooth start and end
     const easeInOutCubic = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     const easedProgress = easeInOutCubic(progress);
 
-    // --- Define Arm Proportions ---
-    const scale = Math.max(1.5, canvas.height / 350);
-    const upperArmLength = 120; // in base units, will be scaled later
-    const forearmLength = 100;
-
-    // --- Animation Kinematics ---
-    let shoulderX, shoulderBaseY;
-    let upperArmAngle, forearmAngle;
-
-    // Y position: arm enters, moves down, then exits
-    const entryY = -(upperArmLength + forearmLength) * scale;
+    let handX, handY;
     const sweepY1 = canvas.height * 0.3;
     const sweepY2 = canvas.height * 0.65;
+    const handEntryExitY = -150; // Start and end off-screen (relative to scaled size)
+    const handVisualWidth = 150; // Estimated width for side padding
 
+    // Animate Y position: down, stay, down, stay, up
     if (easedProgress < 0.15) { // Enter
         const phaseProgress = easedProgress / 0.15;
-        shoulderBaseY = entryY + (sweepY1 - entryY) * phaseProgress;
-        shoulderX = canvas.width * 0.2;
-        upperArmAngle = Math.PI * 0.6;
-        forearmAngle = -Math.PI * 0.4;
+        handY = handEntryExitY + (sweepY1 - handEntryExitY) * phaseProgress;
     } else if (easedProgress < 0.45) { // Sweep 1
-        const phaseProgress = (easedProgress - 0.15) / 0.3;
-        shoulderBaseY = sweepY1;
-        shoulderX = canvas.width * 0.2 + (canvas.width * 0.6) * phaseProgress;
-        upperArmAngle = Math.PI * 0.6 - (Math.PI * 0.2) * phaseProgress;
-        forearmAngle = -Math.PI * 0.4 + Math.sin(phaseProgress * Math.PI * 4) * 0.3;
+        handY = sweepY1;
     } else if (easedProgress < 0.55) { // Move to sweep 2
         const phaseProgress = (easedProgress - 0.45) / 0.1;
-        shoulderBaseY = sweepY1 + (sweepY2 - sweepY1) * phaseProgress;
-        shoulderX = canvas.width * 0.8;
-        upperArmAngle = Math.PI * 0.4;
-        forearmAngle = -Math.PI * 0.4;
+        handY = sweepY1 + (sweepY2 - sweepY1) * phaseProgress;
     } else if (easedProgress < 0.85) { // Sweep 2
-        const phaseProgress = (easedProgress - 0.55) / 0.3;
-        shoulderBaseY = sweepY2;
-        shoulderX = canvas.width * 0.8 - (canvas.width * 0.6) * phaseProgress;
-        upperArmAngle = Math.PI * 0.4 + (Math.PI * 0.2) * phaseProgress;
-        forearmAngle = -Math.PI * 0.4 + Math.sin(phaseProgress * Math.PI * 4) * 0.3;
+        handY = sweepY2;
     } else { // Exit
         const phaseProgress = (easedProgress - 0.85) / 0.15;
-        shoulderBaseY = sweepY2 + (entryY - sweepY2) * phaseProgress;
-        shoulderX = canvas.width * 0.2;
-        upperArmAngle = Math.PI * 0.6;
-        forearmAngle = -Math.PI * 0.4;
+        handY = sweepY2 + (handEntryExitY - sweepY2) * phaseProgress;
     }
 
-    // --- Drawing ---
-    ctx.translate(shoulderX, shoulderBaseY);
+    // Animate X position: center, sweep right, sweep left, center
+    if (easedProgress < 0.15) { // Centered on entry
+        handX = canvas.width / 2;
+    } else if (easedProgress < 0.45) { // Sweep 1 (L to R)
+        const phaseProgress = (easedProgress - 0.15) / 0.3;
+        handX = (handVisualWidth / 2) + (canvas.width - handVisualWidth) * phaseProgress;
+    } else if (easedProgress < 0.55) { // Hold position while moving down
+        handX = canvas.width - (handVisualWidth / 2);
+    } else if (easedProgress < 0.85) { // Sweep 2 (R to L)
+        const phaseProgress = (easedProgress - 0.55) / 0.3;
+        handX = (canvas.width - handVisualWidth / 2) - (canvas.width - handVisualWidth) * phaseProgress;
+    } else { // Almost centered on exit
+        const phaseProgress = (easedProgress - 0.85) / 0.15;
+        handX = (handVisualWidth / 2) + (canvas.width / 2 - handVisualWidth / 2) * (1 - phaseProgress);
+    }
+
+    ctx.translate(handX, handY);
+
+    // Bigger and longer arm. Scale everything up.
+    const scale = Math.max(1.5, canvas.height / 350); // Scale based on canvas height
     ctx.scale(scale, scale);
 
-    // --- Draw Upper Arm ---
-    ctx.rotate(upperArmAngle);
-    ctx.fillStyle = '#d3a37c';
-    const upperArmWidth = 25;
-    ctx.beginPath();
-    if (ctx.roundRect) {
-        ctx.roundRect(-upperArmWidth / 2, -upperArmWidth / 2, upperArmWidth, upperArmLength + upperArmWidth / 2, upperArmWidth / 2);
-    } else {
-        ctx.rect(-upperArmWidth / 2, -upperArmWidth / 2, upperArmWidth, upperArmLength + upperArmWidth / 2);
+    // Rotate to point down, with a slight sway during sweeps
+    let rotation = Math.PI / 2;
+    if (easedProgress >= 0.15 && easedProgress < 0.45) {
+        rotation += (easedProgress - 0.3) * 0.5;
+    } else if (easedProgress >= 0.55 && easedProgress < 0.85) {
+        rotation -= (easedProgress - 0.7) * 0.5;
     }
-    ctx.fill();
-    // Joint
-    ctx.fillStyle = '#c7926c'; // a bit darker for shadow
-    ctx.beginPath();
-    ctx.arc(0, upperArmLength, (upperArmWidth / 2) * 0.8, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.rotate(rotation);
 
-    // Move to the elbow
-    ctx.translate(0, upperArmLength);
-
-    // --- Draw Forearm ---
-    ctx.rotate(forearmAngle);
-    ctx.fillStyle = '#d3a37c';
-    const forearmStartWidth = upperArmWidth;
-    const forearmEndWidth = 22;
+    // --- Draw Arm --- (Modified to be much longer)
+    // The arm graphic is drawn extending to the left (-x), so after rotation it extends up (-y)
+    ctx.fillStyle = '#d3a37c'; // Skin tone for the arm
     ctx.beginPath();
-    ctx.moveTo(-forearmStartWidth / 2, 0);
-    ctx.lineTo(forearmStartWidth / 2, 0);
-    ctx.lineTo(forearmEndWidth / 2, forearmLength);
-    ctx.lineTo(-forearmEndWidth / 2, forearmLength);
+    ctx.moveTo(-30, -20); // Connects to the back of the hand
+    // Use canvas height to ensure it always goes off-screen
+    const armDrawLength = (canvas.height / scale) + 200;
+    ctx.lineTo(-armDrawLength, -35); // Tapers towards off-screen, MUCH longer
+    ctx.lineTo(-armDrawLength, 35);
+    ctx.lineTo(-30, 20);
     ctx.closePath();
     ctx.fill();
 
-    // Move to the wrist
-    ctx.translate(0, forearmLength);
-    ctx.rotate(-Math.PI / 2); // Orient for hand drawing
-
-    // --- Draw Hand & Sponge ---
-    ctx.fillStyle = '#f2d5b1';
+    // --- Draw Hand --- (Original code, just transformed now)
+    ctx.fillStyle = '#f2d5b1'; // Lighter skin tone for the hand
     ctx.beginPath();
-    ctx.arc(0, 0, 30, -Math.PI / 1.8, Math.PI / 1.8, false);
-    ctx.lineTo(-30, 25);
-    ctx.lineTo(-30, -25);
+    ctx.arc(0, 0, 30, -Math.PI / 1.8, Math.PI / 1.8, false); // Curved fingers
+    ctx.lineTo(-30, 25); // Bottom of the palm
+    ctx.lineTo(-30, -25); // Top of the palm
     ctx.closePath();
     ctx.fill();
-
+    
+    // Thumb
     ctx.beginPath();
     ctx.moveTo(-15, -25);
     ctx.quadraticCurveTo(20, -45, 35, -20);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#fffb96';
+    // --- Draw Sponge ---
+    ctx.fillStyle = '#fffb96'; // Yellow sponge color
     ctx.beginPath();
     if (ctx.roundRect) {
-        ctx.roundRect(15, -45, 40, 90, 8);
+         ctx.roundRect(15, -45, 40, 90, 8);
     } else {
         ctx.rect(15, -45, 40, 90);
     }
     ctx.fill();
-
-    // --- Draw Suds ---
+    
+    // --- Draw Suds --- (also transformed)
     ctx.globalAlpha = 0.7;
     for (let i = 0; i < 5; i++) {
         const offsetX = -20 + Math.random() * 80;
@@ -426,6 +408,7 @@ function drawCleaningHand(ctx: CanvasRenderingContext2D, progress: number) {
         ctx.arc(offsetX, offsetY, radius, 0, Math.PI * 2);
         ctx.fill();
     }
+    
     ctx.restore();
 }
 
