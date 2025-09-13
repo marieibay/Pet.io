@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PetState, Food, Bubble, Poop, Sprite, Mood, Ripple, Activity, Decoration } from './types';
 import Header from './components/Header';
@@ -1013,122 +1014,124 @@ const App: React.FC = () => {
                     livePet.sleepProgress = Math.max(0, livePet.sleepProgress - dt * 1);
                 }
 
-                if (livePet.activity === 'goingToSleep') {
-                    // Fallback if target is missing. Primary assignment is in `handleLights`.
-                    if (!livePet.target || livePet.target.isFood || livePet.target.isToy) {
-                       livePet.target = { x: Math.random() * canvas.width, y: sandY - 20 };
-                    }
-                    
-                    const dx = livePet.target.x - livePet.x;
-                    const dy = livePet.target.y - livePet.y;
-                    const dist = Math.hypot(dx, dy);
+                if (livePet.isSleeping) {
+                    // If sleeping, do nothing more for movement in this frame.
+                } else {
+                    // --- Handle all movement for non-sleeping pets ---
 
-                    if (dist < 10) {
-                        livePet.activity = 'sleeping';
-                        livePet.isSleeping = true;
-                        livePet.vx = 0;
-                        livePet.vy = 0;
-                        setPets([...model.pets]);
-                    } else {
-                        const speed = 40;
-                        const desiredVx = (dx / dist) * speed, desiredVy = (dy / dist) * speed;
-                        livePet.vx += (desiredVx - livePet.vx) * 0.05;
-                        livePet.vy += (desiredVy - livePet.vy) * 0.05;
-                    }
-                }
+                    // 1. Determine velocity based on activity
+                    if (livePet.activity === 'goingToSleep') {
+                        if (!livePet.target || livePet.target.isFood || livePet.target.isToy) {
+                           livePet.target = { x: Math.random() * canvas.width, y: sandY - 20 };
+                        }
+                        const dx = livePet.target.x - livePet.x;
+                        const dy = livePet.target.y - livePet.y;
+                        const dist = Math.hypot(dx, dy);
 
-                 if (!livePet.isSleeping && livePet.activity !== 'goingToSleep') {
-                    const EAT_COOLDOWN = 500;
-                    const justAte = time - livePet.lastAteAt <= EAT_COOLDOWN;
-
-                    if (!justAte) {
-                        if (isInPlayMode && model.toy) {
-                            livePet.target = { x: model.toy.x, y: Math.max(waterTopPx + 20, model.toy.y), isToy: true };
+                        if (dist < 10) {
+                            livePet.activity = 'sleeping';
+                            livePet.isSleeping = true;
+                            livePet.vx = 0;
+                            livePet.vy = 0;
+                            setPets([...model.pets]);
                         } else {
-                            if (livePet.target?.isToy) livePet.target = null;
+                            const speed = 40;
+                            const desiredVx = (dx / dist) * speed, desiredVy = (dy / dist) * speed;
+                            livePet.vx += (desiredVx - livePet.vx) * 0.05;
+                            livePet.vy += (desiredVy - livePet.vy) * 0.05;
+                        }
+                    } else { // Handle 'idle', 'playing', etc.
+                        const EAT_COOLDOWN = 500;
+                        const justAte = time - livePet.lastAteAt <= EAT_COOLDOWN;
 
-                            if (livePet.target && !livePet.target.isFood && !livePet.target.isToy) {
-                                if (Math.hypot(livePet.target.x - livePet.x, livePet.target.y - livePet.y) < 50 * livePet.scale) {
-                                    livePet.target = null;
-                                }
-                            }
-                            
-                            let closestFood: Food | null = null;
-                            if (livePet.hunger < 95) {
-                                let minFoodDist = Infinity;
-                                for (const f of model.food) {
-                                    if (f.y > waterTopPx) {
-                                        const dist = Math.hypot(f.x - livePet.x, f.y - livePet.y);
-                                        if (dist < minFoodDist) { minFoodDist = dist; closestFood = f; }
-                                    }
-                                }
-                            }
-                            
-                            if (closestFood) {
-                                const targetOffsetX = (livePet.id - 1.5) * 25 * livePet.scale;
-                                livePet.target = { x: closestFood.x + targetOffsetX, y: closestFood.y, isFood: true };
+                        if (!justAte) {
+                            if (isInPlayMode && model.toy) {
+                                livePet.target = { x: model.toy.x, y: Math.max(waterTopPx + 20, model.toy.y), isToy: true };
                             } else {
-                                if (livePet.target?.isFood) livePet.target = null;
+                                if (livePet.target?.isToy) livePet.target = null;
 
-                                if (livePet.activity === 'idle' && !livePet.target) {
-                                     if (Math.random() < 0.005) {
-                                         const otherPet = model.pets.find(p => p.id !== livePet.id && p.isAlive);
-                                         if (otherPet) {
-                                             const offsetX = (otherPet.facing > 0 ? -1 : 1) * (60 * otherPet.scale);
-                                             const offsetY = (Math.random() - 0.5) * 30;
-                                             livePet.target = { x: otherPet.x + offsetX, y: otherPet.y + offsetY, isFriend: true };
-                                         }
-                                     } else {
-                                        const swimHeight = sandY - waterTopPx - 30;
-                                        const biasedRandom = Math.pow(Math.random(), 0.6); 
-                                        const targetY = (waterTopPx + 20) + biasedRandom * swimHeight;
-                                        const randomX = 10 + Math.random() * (canvas.width - 20);
-                                        livePet.target = { x: randomX, y: targetY };
+                                if (livePet.target && !livePet.target.isFood && !livePet.target.isToy) {
+                                    if (Math.hypot(livePet.target.x - livePet.x, livePet.target.y - livePet.y) < 50 * livePet.scale) {
+                                        livePet.target = null;
+                                    }
+                                }
+                                
+                                let closestFood: Food | null = null;
+                                if (livePet.hunger < 95) {
+                                    let minFoodDist = Infinity;
+                                    for (const f of model.food) {
+                                        if (f.y > waterTopPx) {
+                                            const dist = Math.hypot(f.x - livePet.x, f.y - livePet.y);
+                                            if (dist < minFoodDist) { minFoodDist = dist; closestFood = f; }
+                                        }
+                                    }
+                                }
+                                
+                                if (closestFood) {
+                                    const targetOffsetX = (livePet.id - 1.5) * 25 * livePet.scale;
+                                    livePet.target = { x: closestFood.x + targetOffsetX, y: closestFood.y, isFood: true };
+                                } else {
+                                    if (livePet.target?.isFood) livePet.target = null;
+
+                                    if (livePet.activity === 'idle' && !livePet.target) {
+                                         if (Math.random() < 0.005) {
+                                             const otherPet = model.pets.find(p => p.id !== livePet.id && p.isAlive);
+                                             if (otherPet) {
+                                                 const offsetX = (otherPet.facing > 0 ? -1 : 1) * (60 * otherPet.scale);
+                                                 const offsetY = (Math.random() - 0.5) * 30;
+                                                 livePet.target = { x: otherPet.x + offsetX, y: otherPet.y + offsetY, isFriend: true };
+                                             }
+                                         } else {
+                                            const swimHeight = sandY - waterTopPx - 30;
+                                            const biasedRandom = Math.pow(Math.random(), 0.6); 
+                                            const targetY = (waterTopPx + 20) + biasedRandom * swimHeight;
+                                            const randomX = 10 + Math.random() * (canvas.width - 20);
+                                            livePet.target = { x: randomX, y: targetY };
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    // Movement
-                    if (livePet.target) {
-                        const dx = livePet.target.x - livePet.x, dy = livePet.target.y - livePet.y;
-                        const dist = Math.hypot(dx, dy) || 1;
-                        const isChasing = livePet.target.isFood || livePet.target.isToy;
-                        const isFollowing = livePet.target.isFriend;
-                        const speedMap = { happy: 180, ok: 150, sick: 90, sos: 60 };
-                        const idleSpeedMap = { happy: 70, ok: 50, sick: 30, sos: 15 };
-                        const followSpeedMap = { happy: 90, ok: 70, sick: 45, sos: 25 };
-                        
-                        const speedTier = isChasing ? speedMap : (isFollowing ? followSpeedMap : idleSpeedMap);
-                        let targetSpeed = speedTier[livePet.mood];
-                        const acceleration = isChasing ? 0.1 : 0.05;
-                        
-                        const slowingRadius = isChasing ? 120 : 80;
-                        if (dist < slowingRadius) {
-                            const minSpeedFactor = isChasing ? 0.4 : 0.2;
-                            const speedFactor = minSpeedFactor + (1 - minSpeedFactor) * (dist / slowingRadius);
-                            targetSpeed *= speedFactor;
+                        if (livePet.target) {
+                            const dx = livePet.target.x - livePet.x, dy = livePet.target.y - livePet.y;
+                            const dist = Math.hypot(dx, dy) || 1;
+                            const isChasing = livePet.target.isFood || livePet.target.isToy;
+                            const isFollowing = livePet.target.isFriend;
+                            const speedMap = { happy: 180, ok: 150, sick: 90, sos: 60 };
+                            const idleSpeedMap = { happy: 70, ok: 50, sick: 30, sos: 15 };
+                            const followSpeedMap = { happy: 90, ok: 70, sick: 45, sos: 25 };
+                            
+                            const speedTier = isChasing ? speedMap : (isFollowing ? followSpeedMap : idleSpeedMap);
+                            let targetSpeed = speedTier[livePet.mood];
+                            const acceleration = isChasing ? 0.1 : 0.05;
+                            
+                            const slowingRadius = isChasing ? 120 : 80;
+                            if (dist < slowingRadius) {
+                                const minSpeedFactor = isChasing ? 0.4 : 0.2;
+                                const speedFactor = minSpeedFactor + (1 - minSpeedFactor) * (dist / slowingRadius);
+                                targetSpeed *= speedFactor;
+                            }
+
+                            const desiredVx = (dx / dist) * targetSpeed, desiredVy = (dy / dist) * targetSpeed;
+                            livePet.vx += (desiredVx - livePet.vx) * acceleration; livePet.vy += (desiredVy - livePet.vy) * acceleration;
+                            if (Math.abs(livePet.vx) > 0.1) livePet.facing += (Math.sign(livePet.vx) - livePet.facing) * (isChasing ? 0.15 : 0.08);
                         }
-
-                        const desiredVx = (dx / dist) * targetSpeed, desiredVy = (dy / dist) * targetSpeed;
-                        livePet.vx += (desiredVx - livePet.vx) * acceleration; livePet.vy += (desiredVy - livePet.vy) * acceleration;
-                        if (Math.abs(livePet.vx) > 0.1) livePet.facing += (Math.sign(livePet.vx) - livePet.facing) * (isChasing ? 0.15 : 0.08);
                     }
-                }
-                if (!livePet.isSleeping) {
-                    let friction = 0.95; // Standard friction
-                    // Apply extra braking when very close to a chase target to prevent overshooting
+
+                    // 2. Apply friction and update position (common for all non-sleeping pets)
+                    let friction = 0.95;
                     if (livePet.target && (livePet.target.isFood || livePet.target.isToy)) {
                         const distToTarget = Math.hypot(livePet.target.x - livePet.x, livePet.target.y - livePet.y);
                         if (distToTarget < 40 * livePet.scale) {
-                            friction = 0.85; // Increased friction (braking)
+                            friction = 0.85;
                         }
                     }
                     livePet.vx *= friction; 
                     livePet.vy *= friction;
 
-                    livePet.x += livePet.vx * dt; livePet.y += livePet.vy * dt;
+                    livePet.x += livePet.vx * dt;
+                    livePet.y += livePet.vy * dt;
                     
                     livePet.x = Math.max(petHalfWidth, Math.min(canvas.width - petHalfWidth, livePet.x));
                     livePet.y = Math.max(waterTopPx + 20, Math.min(sandY - 10, livePet.y));
