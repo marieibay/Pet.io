@@ -619,6 +619,7 @@ const App: React.FC = () => {
 
     const [pets, setPets] = useState<PetState[]>(initialPets);
     const [isMuted, setIsMuted] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
     const [isInPlayMode, setIsInPlayMode] = useState(false);
     const [isCleaning, setIsCleaning] = useState(false);
 
@@ -644,6 +645,30 @@ const App: React.FC = () => {
 
     const sprite = useFishSprite();
     const audio = useAudio(isMuted);
+
+    const toggleFullScreen = useCallback(() => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch((err) => {
+                console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+            });
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+    }, []);
+    
+    useEffect(() => {
+        const onFullScreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+        document.addEventListener('fullscreenchange', onFullScreenChange);
+        document.addEventListener('webkitfullscreenchange', onFullScreenChange);
+        return () => {
+            document.removeEventListener('fullscreenchange', onFullScreenChange);
+            document.removeEventListener('webkitfullscreenchange', onFullScreenChange);
+        };
+    }, []);
     
     useEffect(() => {
         const handleResize = () => {
@@ -1189,7 +1214,9 @@ const App: React.FC = () => {
                 <Header 
                     className="header" 
                     isMuted={isMuted} 
-                    onToggleMute={() => setIsMuted(m => !m)} 
+                    onToggleMute={() => setIsMuted(m => !m)}
+                    isFullscreen={isFullscreen}
+                    onToggleFullScreen={toggleFullScreen}
                 />
                 <div className="ui-panel relative p-0 overflow-hidden flex-1 min-h-0 touch-none canvas-container">
                     <canvas 
