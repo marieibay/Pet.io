@@ -6,6 +6,8 @@ import StatusBar from './components/StatusBar';
 // --- GAME LOGIC & STATE ---
 const WATER_LEVEL = 1.0;
 const SAND_HEIGHT = 20;
+const SAVE_KEY = 'petio_save_data';
+
 
 // --- ART ASSETS & RENDERING ---
 
@@ -615,16 +617,18 @@ const createInitialPets = (canvas: HTMLCanvasElement | null): PetState[] => {
 };
 
 const App: React.FC = () => {
-    const initialPets = useMemo(() => createInitialPets(null), []);
-
-    const [pets, setPets] = useState<PetState[]>(initialPets);
+    const [pets, setPets] = useState<PetState[]>([]);
     const [isMuted, setIsMuted] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
     const [isInPlayMode, setIsInPlayMode] = useState(false);
     const [isCleaning, setIsCleaning] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const isMutedRef = useRef(isMuted);
+    isMutedRef.current = isMuted;
 
     const gameModelRef = useRef({
-        pets: initialPets,
+        pets: [] as PetState[],
         bubbles: [] as Bubble[],
         backgroundBubbles: [] as Bubble[],
         food: [] as Food[],
@@ -645,6 +649,115 @@ const App: React.FC = () => {
 
     const sprite = useFishSprite();
     const audio = useAudio(isMuted);
+
+    const calculateMood = useCallback((petState: PetState): Mood => {
+        if (!petState.isAlive) return 'sos';
+        const avg = (petState.hunger + petState.happiness + petState.health + petState.energy + petState.cleanliness) / 5;
+        if (avg > 75) return 'happy';
+        if (avg > 50) return 'ok';
+        if (avg > 25) return 'sick';
+        return 'sos';
+    }, []);
+
+    useEffect(() => {
+        const loadGame = () => {
+            const savedDataString = localStorage.getItem(SAVE_KEY);
+            if (!savedDataString) {
+                console.log("No saved data found. Starting a new game.");
+                const newPets = createInitialPets(canvasRef.current);
+                gameModelRef.current.pets = newPets;
+                setPets(newPets);
+                setIsMuted(false);
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                const savedData = JSON.parse(savedDataString);
+                const { lastSaveTime, pets: savedPets, food, poops, isMuted: savedMute } = savedData;
+
+                const now = Date.now();
+                const elapsedHours = (now - lastSaveTime) / (1000 * 60 * 60);
+
+                if (elapsedHours <= 0.001) { // Threshold to prevent running on quick reloads
+                    gameModelRef.current.pets = savedPets;
+                    gameModelRef.current.food = food || [];
+                    gameModelRef.current.poops = poops || [];
+                    setPets(savedPets);
+                    setIsMuted(savedMute ?? false);
+                    setIsLoading(false);
+                    return;
+                }
+                
+                console.log(`Simulating ${elapsedHours.toFixed(2)} hours of inactivity.`);
+                const poopCount = (poops || []).length;
+                const updatedPets = savedPets.map((pet: PetState) => {
+                    if (!pet.isAlive) return pet;
+
+                    const HUNGER_DECAY_PER_HOUR = 15;
+                    const HAPPINESS_DECAY_PER_HOUR = 10;
+                    const ENERGY_DECAY_PER_HOUR = 12;
+                    const ENERGY_REGEN_PER_HOUR = 25;
+                    const CLEANLINESS_DECAY_PER_POOP_PER_HOUR = 30;
+                    const HEALTH_DECAY_LOW_STATS_PER_HOUR = 10;
+                    const HEALTH_REGEN_HIGH_STATS_PER_HOUR = 5;
+                    const sleepMultiplier = 0.4;
+
+                    if (pet.isSleeping) {
+                        pet.energy = Math.min(100, pet.energy + ENERGY_REGEN_PER_HOUR * elapsedHours);
+                        pet.hunger = Math.max(0, pet.hunger - (HUNGER_DECAY_PER_HOUR * sleepMultiplier) * elapsedHours);
+                        pet.happiness = Math.max(0, pet.happiness - (HAPPINESS_DECAY_PER_HOUR * sleepMultiplier) * elapsedHours);
+                    } else {
+                        pet.energy = Math.max(0, pet.energy - ENERGY_DECAY_PER_HOUR * elapsedHours);
+                        pet.hunger = Math.max(0, pet.hunger - HUNGER_DECAY_PER_HOUR * elapsedHours);
+                        pet.happiness = Math.max(0, pet.happiness - HAPPINESS_DECAY_PER_HOUR * elapsedHours);
+                    }
+
+                    pet.cleanliness = Math.max(0, pet.cleanliness - (poopCount * CLEANLINESS_DECAY_PER_POOP_PER_HOUR) * elapsedHours);
+
+                    const avgStats = (pet.hunger + pet.happiness + pet.energy + pet.cleanliness) / 4;
+                    if (avgStats < 20) {
+                        pet.health = Math.max(0, pet.health - HEALTH_DECAY_LOW_STATS_PER_HOUR * elapsedHours);
+                    } else if (avgStats > 80) {
+                        pet.health = Math.min(100, pet.health + HEALTH_REGEN_HIGH_STATS_PER_HOUR * elapsedHours);
+                    }
+                    
+                    if (pet.health <= 0) {
+                        pet.isAlive = false;
+                    }
+
+                    pet.mood = calculateMood(pet);
+                    if (pet.activity === 'goingToSleep') {
+                        pet.activity = 'idle';
+                        pet.isSleeping = false;
+                    }
+                    pet.target = null;
+                    pet.vx = 0;
+                    pet.vy = 0;
+                    
+                    return pet;
+                });
+
+                gameModelRef.current.pets = updatedPets;
+                gameModelRef.current.food = food || [];
+                gameModelRef.current.poops = poops || [];
+                setPets(updatedPets);
+                setIsMuted(savedMute ?? false);
+
+            } catch (error) {
+                console.error("Failed to load saved data. Starting a new game.", error);
+                localStorage.removeItem(SAVE_KEY);
+                const newPets = createInitialPets(canvasRef.current);
+                gameModelRef.current.pets = newPets;
+                setPets(newPets);
+                setIsMuted(false);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        
+        setTimeout(loadGame, 100);
+    }, [calculateMood]);
 
     const toggleFullScreen = useCallback(() => {
         if (!document.fullscreenElement) {
@@ -698,19 +811,10 @@ const App: React.FC = () => {
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, [audio]);
-
-    const calculateMood = useCallback((petState: PetState): Mood => {
-        if (!petState.isAlive) return 'sos';
-        const avg = (petState.hunger + petState.happiness + petState.health + petState.energy + petState.cleanliness) / 5;
-        if (avg > 75) return 'happy';
-        if (avg > 50) return 'ok';
-        if (avg > 25) return 'sick';
-        return 'sos';
-    }, []);
     
-
     const handlePlay = () => {
         const model = gameModelRef.current;
+        if (model.pets.length === 0) return;
         const mainPet = model.pets[0];
         if (!mainPet.isAlive || mainPet.isSleeping || mainPet.activity === 'goingToSleep') return;
         audio.playPlay();
@@ -728,6 +832,7 @@ const App: React.FC = () => {
 
     const handleClean = () => {
         const model = gameModelRef.current;
+        if (model.pets.length === 0) return;
         const mainPet = model.pets[0];
         if (!mainPet.isAlive || model.cleaningAnimation.active) return;
         if (model.poops.length === 0 && mainPet.cleanliness >= 99) return;
@@ -743,6 +848,7 @@ const App: React.FC = () => {
 
     const handleLights = () => {
         const model = gameModelRef.current;
+        if (model.pets.length === 0) return;
         const mainPet = model.pets[0];
         if (!mainPet.isAlive) return;
 
@@ -784,7 +890,7 @@ const App: React.FC = () => {
     const handleInteractionStart = (e: React.PointerEvent<HTMLCanvasElement>) => {
         e.preventDefault();
         const model = gameModelRef.current;
-        if (!model.pets.some(p => p.isAlive) || model.pets[0].isSleeping) return;
+        if (model.pets.length === 0 || !model.pets.some(p => p.isAlive) || model.pets[0].isSleeping) return;
         const coords = getCoords(e);
         if (!coords) return;
         const { x, y } = coords;
@@ -849,7 +955,7 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas || !sprite.isReady) return;
+        if (!canvas || !sprite.isReady || pets.length === 0) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         
@@ -1135,6 +1241,19 @@ const App: React.FC = () => {
                 }
                 
                 setPets([...model.pets]);
+
+                const gameStateToSave = {
+                    lastSaveTime: Date.now(),
+                    pets: model.pets,
+                    food: model.food,
+                    poops: model.poops,
+                    isMuted: isMutedRef.current,
+                };
+                try {
+                    localStorage.setItem(SAVE_KEY, JSON.stringify(gameStateToSave));
+                } catch (e) {
+                    console.error("Failed to save game state:", e);
+                }
             }
 
             // --- RENDER ---
@@ -1211,9 +1330,20 @@ const App: React.FC = () => {
         
         animationId = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(animationId);
-    }, [sprite.isReady, audio, calculateMood, isInPlayMode]);
+    }, [sprite.isReady, audio, calculateMood, isInPlayMode, pets]);
 
     const mainPet = pets[0];
+
+    if (isLoading) {
+        return (
+            <div id="app-container" className="h-screen flex justify-center items-center p-2 bg-[#040913]">
+                <div className="text-center">
+                    <h1 className="text-4xl text-white mb-4">Pet.io</h1>
+                    <p className="text-xl text-yellow-400 animate-pulse">Waking up your pets...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div id="app-container" className="h-screen flex justify-center p-2" onClick={audio.unlockAudio}>
