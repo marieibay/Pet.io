@@ -175,12 +175,51 @@
         @media (orientation: landscape) and (max-height: 500px) {
             main.ui-container {
                 grid-template-columns: 1fr 240px;
+                padding: 4px;
+                gap: 4px;
             }
-            .header h1 { font-size: 1.5rem; }
-            .ui-panel.text-xl { font-size: 1rem; }
-            .ui-button { font-size: 0.7rem; padding: 12px 6px; }
-            .ui-button i { font-size: 1.25rem; } /* text-xl */
-            .status-bar-label { font-size: 0.7rem; line-height: 1.5rem; }
+            .canvas-container {
+                max-height: calc(100vh - 8px);
+            }
+            .header {
+                padding: 4px;
+            }
+            .header h1 { font-size: 1.3rem; }
+            .header .ui-button { padding: 4px; }
+            .header .ui-button i { font-size: 1.25rem; }
+
+            .ui-controls {
+                gap: 4px;
+            }
+            .ui-controls .ui-panel {
+                padding: 4px;
+            }
+            .ui-panel.text-xl { /* Mood */
+                font-size: 0.9rem;
+            }
+            .status-bar-label {
+                font-size: 0.7rem;
+                line-height: 1rem;
+            }
+            .flex.justify-between.items-center.mb-1 { /* Status bar icon container */
+                font-size: 0.9rem;
+                margin-bottom: 2px;
+            }
+            .ui-panel.grid.grid-cols-2 { /* Status bar container */
+                row-gap: 4px;
+                column-gap: 8px;
+            }
+            .bg-zinc-700.h-5 { height: 0.75rem; } /* h-3 */
+
+            .grid.grid-cols-3.gap-3 { gap: 4px; }
+            .ui-controls .ui-button {
+                padding: 4px 2px;
+                font-size: 0.7rem;
+                gap: 2px;
+            }
+            .ui-controls .ui-button i {
+                font-size: 1.25rem; /* text-xl */
+            }
         }
 
         /* --- Tablet/Desktop Landscape Overrides (Wider UI) --- */

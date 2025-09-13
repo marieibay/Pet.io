@@ -1206,7 +1206,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="ui-controls">
                     <div className="ui-panel text-center text-xl text-yellow-400 tracking-wider">
-                         {isInPlayMode ? "Drag in the water to play!" : `MOOD: ${mainPet?.isAlive ? (mainPet?.mood.toUpperCase() ?? '') : "X_X"}`}
+                         {`MOOD: ${mainPet?.isAlive ? (mainPet?.mood.toUpperCase() ?? '') : "X_X"}`}
                     </div>
                     {mainPet?.isAlive && (
                         <div className="ui-panel grid grid-cols-2 gap-x-4 gap-y-2">
