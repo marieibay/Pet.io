@@ -941,10 +941,10 @@ const App: React.FC = () => {
                                              livePet.target = { x: otherPet.x + offsetX, y: otherPet.y + offsetY, isFriend: true };
                                          }
                                      } else {
-                                        const swimHeight = sandY - waterTopPx - 60;
+                                        const swimHeight = sandY - waterTopPx - 30;
                                         const biasedRandom = Math.pow(Math.random(), 0.6); 
-                                        const targetY = (waterTopPx + 40) + biasedRandom * swimHeight;
-                                        const randomX = petHalfWidth + Math.random() * (canvas.width - petHalfWidth * 2);
+                                        const targetY = (waterTopPx + 20) + biasedRandom * swimHeight;
+                                        const randomX = 10 + Math.random() * (canvas.width - 20);
                                         livePet.target = { x: randomX, y: targetY };
                                     }
                                 }
@@ -993,7 +993,7 @@ const App: React.FC = () => {
                     livePet.x += livePet.vx * dt; livePet.y += livePet.vy * dt;
                     
                     livePet.x = Math.max(petHalfWidth, Math.min(canvas.width - petHalfWidth, livePet.x));
-                    livePet.y = Math.max(waterTopPx + 40, Math.min(sandY - 20, livePet.y));
+                    livePet.y = Math.max(waterTopPx + 20, Math.min(sandY - 10, livePet.y));
                     
                     livePet.phase += 0.02;
                     const speedVal = Math.hypot(livePet.vx, livePet.vy);
