@@ -774,15 +774,14 @@ const App: React.FC = () => {
         setPets([...model.pets]);
     };
 
-    const getCoords = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const getCoords = (e: React.PointerEvent<HTMLCanvasElement>) => {
         const canvas = canvasRef.current;
         if (!canvas) return null;
         const rect = canvas.getBoundingClientRect();
-        const touch = 'touches' in e ? e.touches[0] : e;
-        return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
 
-    const handleInteractionStart = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const handleInteractionStart = (e: React.PointerEvent<HTMLCanvasElement>) => {
         e.preventDefault();
         const model = gameModelRef.current;
         if (!model.pets.some(p => p.isAlive) || model.pets[0].isSleeping) return;
@@ -834,7 +833,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleInteractionMove = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const handleInteractionMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
         e.preventDefault();
         if (!isInPlayMode || !isDraggingRef.current) return;
         const coords = getCoords(e);
@@ -1230,13 +1229,10 @@ const App: React.FC = () => {
                     <canvas 
                       ref={canvasRef} 
                       className="w-full h-full" 
-                      onMouseDown={handleInteractionStart}
-                      onMouseMove={handleInteractionMove}
-                      onMouseUp={handleInteractionEnd}
-                      onMouseLeave={handleInteractionEnd}
-                      onTouchStart={handleInteractionStart}
-                      onTouchMove={handleInteractionMove}
-                      onTouchEnd={handleInteractionEnd}
+                      onPointerDown={handleInteractionStart}
+                      onPointerMove={handleInteractionMove}
+                      onPointerUp={handleInteractionEnd}
+                      onPointerLeave={handleInteractionEnd}
                     />
                 </div>
                 <div className="ui-controls">
