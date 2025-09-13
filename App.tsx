@@ -1205,7 +1205,7 @@ const App: React.FC = () => {
                     />
                 </div>
                 <div className="ui-controls">
-                    <div className="ui-panel text-center text-2xl text-yellow-400 tracking-wider">
+                    <div className="ui-panel text-center text-xl text-yellow-400 tracking-wider">
                          {isInPlayMode ? "Drag in the water to play!" : `MOOD: ${mainPet?.isAlive ? (mainPet?.mood.toUpperCase() ?? '') : "X_X"}`}
                     </div>
                     {mainPet?.isAlive && (
@@ -1218,22 +1218,18 @@ const App: React.FC = () => {
                     )}
                     <div className="grid grid-cols-3 gap-3">
                         <button onClick={handlePlay} className="ui-button flex flex-col items-center justify-center gap-1">
-                            <i className="fas fa-gamepad text-3xl"></i><span>{isInPlayMode ? 'STOP' : 'PLAY'}</span>
+                            <i className="fas fa-gamepad text-2xl"></i><span>{isInPlayMode ? 'STOP' : 'PLAY'}</span>
                         </button>
                         <button 
                             onClick={handleClean} 
                             disabled={isCleaning}
                             className="ui-button flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
-                            <i className="fas fa-soap text-3xl"></i><span>CLEAN</span>
+                            <i className="fas fa-soap text-2xl"></i><span>CLEAN</span>
                         </button>
                         <button onClick={handleLights} className="ui-button flex flex-col items-center justify-center gap-1">
-                            <i className={`fas ${mainPet?.isSleeping ? 'fa-sun' : 'fa-lightbulb'} text-3xl`}></i>
+                            <i className={`fas ${mainPet?.isSleeping ? 'fa-sun' : 'fa-lightbulb'} text-2xl`}></i>
                             <span>{mainPet?.isSleeping ? 'WAKE' : 'SLEEP'}</span>
                         </button>
-                    </div>
-                   
-                    <div className="text-center text-sm text-gray-400 mt-auto pt-2">
-                      V1.3 • {new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}
                     </div>
                 </div>
             </main>
