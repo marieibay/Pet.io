@@ -21,6 +21,7 @@ export interface PetState {
   lastSlept: number;
   lastBubbleAt: number;
   lastAteAt: number;
+  lastToyInteraction?: number;
   isAlive: boolean;
   isSleeping: boolean;
   sleepProgress?: number; // For fade animation

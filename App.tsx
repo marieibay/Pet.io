@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PetState, Food, Bubble, Poop, Sprite, Mood, Ripple, Activity, Decoration } from './types';
 import Header from './components/Header';
@@ -602,7 +603,7 @@ const createPet = (id: number, scale: number, name: string, canvas: HTMLCanvasEl
     id, name, scale, type,
     age: 0, hunger: 80, happiness: 80, health: 100,
     cleanliness: 100, energy: 80, mood: 'happy', activity: 'idle',
-    lastFed: now, lastPlayed: now, lastCleaned: now, lastSlept: now, lastBubbleAt: 0, lastAteAt: 0,
+    lastFed: now, lastPlayed: now, lastCleaned: now, lastSlept: now, lastBubbleAt: 0, lastAteAt: 0, lastToyInteraction: 0,
     isAlive: true, isSleeping: false, sleepProgress: 0,
     x: canvas ? (canvas.width / 2) + (id - 2) * 100 : 200 + (id - 2) * 100, 
     y: canvas ? (canvas.height / 2) + (Math.random() - 0.5) * 50 : 150 + (Math.random() - 0.5) * 50,
@@ -646,7 +647,6 @@ const App: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const isDraggingRef = useRef(false);
     const toyTimeoutRef = useRef<number | null>(null);
-    const lastHappyIncrease = useRef(0);
     const lastTap = useRef(0);
     const lastTickTimeRef = useRef(0);
 
@@ -704,12 +704,9 @@ const App: React.FC = () => {
                     const CLEANLINESS_DECAY_PER_POOP_PER_HOUR = 30;
                     const HEALTH_DECAY_LOW_STATS_PER_HOUR = 10;
                     const HEALTH_REGEN_HIGH_STATS_PER_HOUR = 5;
-                    const sleepMultiplier = 0.4;
 
                     if (pet.isSleeping) {
                         pet.energy = Math.min(100, pet.energy + ENERGY_REGEN_PER_HOUR * elapsedHours);
-                        pet.hunger = Math.max(0, pet.hunger - (HUNGER_DECAY_PER_HOUR * sleepMultiplier) * elapsedHours);
-                        pet.happiness = Math.max(0, pet.happiness - (HAPPINESS_DECAY_PER_HOUR * sleepMultiplier) * elapsedHours);
                     } else {
                         pet.energy = Math.max(0, pet.energy - ENERGY_DECAY_PER_HOUR * elapsedHours);
                         pet.hunger = Math.max(0, pet.hunger - HUNGER_DECAY_PER_HOUR * elapsedHours);
@@ -731,8 +728,8 @@ const App: React.FC = () => {
 
                     pet.mood = calculateMood(pet);
                     if (pet.activity === 'goingToSleep') {
-                        pet.activity = 'idle';
-                        pet.isSleeping = false;
+                        pet.activity = 'sleeping';
+                        pet.isSleeping = true;
                     }
                     pet.target = null;
                     pet.vx = 0;
@@ -837,7 +834,7 @@ const App: React.FC = () => {
         const model = gameModelRef.current;
         if (model.pets.length === 0) return;
         const mainPet = model.pets[0];
-        if (!mainPet.isAlive || model.cleaningAnimation.active) return;
+        if (!mainPet.isAlive || mainPet.isSleeping || model.cleaningAnimation.active) return;
         if (model.poops.length === 0 && mainPet.cleanliness >= 99) return;
 
         audio.playClean();
@@ -1168,10 +1165,12 @@ const App: React.FC = () => {
                 }
                 
                 // Interactions
-                if (isInPlayMode && model.toy && Math.hypot(model.toy.x - livePet.x, model.toy.y - livePet.y) < (35 * livePet.scale) && time - lastHappyIncrease.current > 500) {
-                    audio.playToySqueak();
-                    livePet.happiness = Math.min(100, livePet.happiness + 5);
-                    lastHappyIncrease.current = time;
+                if (isInPlayMode && model.toy && Math.hypot(model.toy.x - livePet.x, model.toy.y - livePet.y) < (65 * livePet.scale)) {
+                    if (!livePet.lastToyInteraction || time - livePet.lastToyInteraction > 1000) {
+                        audio.playToySqueak();
+                        livePet.happiness = Math.min(100, livePet.happiness + 5);
+                        livePet.lastToyInteraction = time;
+                    }
                 }
                 
                 const eatenFoodIds = new Set<number>();
