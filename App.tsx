@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PetState, Food, Bubble, Poop, Sprite, Mood, Ripple, Activity, Decoration } from './types';
 import Header from './components/Header';
@@ -705,7 +703,7 @@ const App: React.FC = () => {
                     const HEALTH_DECAY_LOW_STATS_PER_HOUR = 10;
                     const HEALTH_REGEN_HIGH_STATS_PER_HOUR = 5;
 
-                    if (pet.isSleeping) {
+                    if (pet.isSleeping || pet.activity === 'goingToSleep') {
                         pet.energy = Math.min(100, pet.energy + ENERGY_REGEN_PER_HOUR * elapsedHours);
                     } else {
                         pet.energy = Math.max(0, pet.energy - ENERGY_DECAY_PER_HOUR * elapsedHours);
@@ -814,9 +812,9 @@ const App: React.FC = () => {
     
     const handlePlay = () => {
         const model = gameModelRef.current;
-        if (model.pets.length === 0) return;
-        const mainPet = model.pets[0];
-        if (!mainPet.isAlive || mainPet.isSleeping || mainPet.activity === 'goingToSleep') return;
+        const isAnyPetSleeping = model.pets.some(p => p.isAlive && (p.isSleeping || p.activity === 'goingToSleep'));
+        if (!model.pets.some(p => p.isAlive) || isAnyPetSleeping) return;
+
         audio.playPlay();
         setIsInPlayMode(prev => {
             const isEntering = !prev;
@@ -832,10 +830,10 @@ const App: React.FC = () => {
 
     const handleClean = () => {
         const model = gameModelRef.current;
-        if (model.pets.length === 0) return;
         const mainPet = model.pets[0];
-        if (!mainPet.isAlive || mainPet.isSleeping || model.cleaningAnimation.active) return;
-        if (model.poops.length === 0 && mainPet.cleanliness >= 99) return;
+        const isAnyPetSleeping = model.pets.some(p => p.isAlive && (p.isSleeping || p.activity === 'goingToSleep'));
+        if (!model.pets.some(p => p.isAlive) || isAnyPetSleeping || model.cleaningAnimation.active) return;
+        if (model.poops.length === 0 && (mainPet && mainPet.cleanliness >= 99)) return;
 
         audio.playClean();
         model.cleaningAnimation = { 
@@ -848,22 +846,21 @@ const App: React.FC = () => {
 
     const handleLights = () => {
         const model = gameModelRef.current;
-        if (model.pets.length === 0) return;
-        const mainPet = model.pets[0];
-        if (!mainPet.isAlive) return;
+        if (!model.pets.some(p => p.isAlive)) return;
 
         const canvas = canvasRef.current;
         if (!canvas) return;
         const sandY = canvas.height - SAND_HEIGHT;
-
-        const isWakingUp = mainPet.isSleeping;
+        
+        const isNightMode = model.pets.some(p => p.isAlive && (p.isSleeping || p.activity === 'goingToSleep'));
 
         model.pets.forEach(pet => {
             if (pet.isAlive) {
-                if (isWakingUp) {
+                if (isNightMode) { // Waking up
                     pet.isSleeping = false;
                     pet.activity = 'idle';
-                } else if (pet.activity !== 'goingToSleep') {
+                    pet.target = null;
+                } else if (pet.activity !== 'goingToSleep' && pet.activity !== 'sleeping') { // Going to sleep
                     pet.activity = 'goingToSleep';
                     
                     if (pet.id === 1) {
@@ -890,7 +887,9 @@ const App: React.FC = () => {
     const handleInteractionStart = (e: React.PointerEvent<HTMLCanvasElement>) => {
         e.preventDefault();
         const model = gameModelRef.current;
-        if (model.pets.length === 0 || !model.pets.some(p => p.isAlive) || model.pets[0].isSleeping) return;
+        const isAnyPetSleeping = model.pets.some(p => p.isSleeping || p.activity === 'goingToSleep');
+        if (model.pets.length === 0 || !model.pets.some(p => p.isAlive) || isAnyPetSleeping) return;
+
         const coords = getCoords(e);
         if (!coords) return;
         const { x, y } = coords;
@@ -1035,7 +1034,6 @@ const App: React.FC = () => {
                             livePet.isSleeping = true;
                             livePet.vx = 0;
                             livePet.vy = 0;
-                            setPets([...model.pets]);
                         } else {
                             const speed = 40;
                             const desiredVx = (dx / dist) * speed, desiredVy = (dy / dist) * speed;
@@ -1339,14 +1337,23 @@ const App: React.FC = () => {
             }
 
             if (model.toy) drawToy(ctx, model.toy);
+            
+            const anyPetSleeping = model.pets.some(p => p.isAlive && p.isSleeping);
+            const anyPetGoingToSleep = model.pets.some(p => p.isAlive && p.activity === 'goingToSleep');
+            const sleepProgress = model.pets.reduce((max, p) => Math.max(max, p.sleepProgress ?? 0), 0);
 
-            if (mainPet && mainPet.sleepProgress && mainPet.sleepProgress > 0) {
-                ctx.fillStyle=`rgba(0,0,0,${0.7 * mainPet.sleepProgress})`; ctx.fillRect(0,0,canvas.width,canvas.height);
-                if (mainPet.isSleeping) {
-                    const zzz_x = mainPet.x;
-                    const zzz_y = mainPet.y - 20;
-                    ctx.fillStyle=`rgba(255,255,255, ${mainPet.sleepProgress})`; ctx.font='24px VT323'; ctx.textAlign='center';
-                    ctx.fillText('Z Z Z', zzz_x, zzz_y);
+
+            if (sleepProgress > 0) {
+                ctx.fillStyle=`rgba(0,0,0,${0.7 * sleepProgress})`; ctx.fillRect(0,0,canvas.width,canvas.height);
+                if (anyPetSleeping || anyPetGoingToSleep) {
+                    model.pets.forEach(p => {
+                        if (p.isAlive && p.isSleeping) {
+                            const zzz_x = p.x;
+                            const zzz_y = p.y - 20;
+                            ctx.fillStyle=`rgba(255,255,255, ${p.sleepProgress})`; ctx.font='24px VT323'; ctx.textAlign='center';
+                            ctx.fillText('Z Z Z', zzz_x, zzz_y);
+                        }
+                    });
                 }
             }
             if (mainPet && !mainPet.isAlive) {
@@ -1359,6 +1366,7 @@ const App: React.FC = () => {
     }, [sprite.isReady, audio, calculateMood, isInPlayMode, pets]);
 
     const mainPet = pets[0];
+    const isNightMode = pets.some(p => p.isAlive && (p.isSleeping || p.activity === 'goingToSleep'));
     
     const handleFirstInteraction = useCallback(() => {
         audio.unlockAudio();
@@ -1420,8 +1428,8 @@ const App: React.FC = () => {
                             <i className="fas fa-soap text-2xl"></i><span>CLEAN</span>
                         </button>
                         <button onClick={handleLights} className="ui-button flex flex-col items-center justify-center gap-1">
-                            <i className={`fas ${mainPet?.isSleeping ? 'fa-sun' : 'fa-lightbulb'} text-2xl`}></i>
-                            <span>{mainPet?.isSleeping ? 'WAKE' : 'SLEEP'}</span>
+                            <i className={`fas ${isNightMode ? 'fa-sun' : 'fa-lightbulb'} text-2xl`}></i>
+                            <span>{isNightMode ? 'WAKE' : 'SLEEP'}</span>
                         </button>
                     </div>
                 </div>
