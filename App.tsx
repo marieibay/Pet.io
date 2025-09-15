@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PetState, Food, Bubble, Poop, Sprite, Mood, Ripple, Activity, Decoration } from './types';
 import Header from './components/Header';
@@ -595,7 +594,7 @@ const useAudio = (isMuted: boolean) => {
   }), [playFeed, playPlay, playClean, playPoke, playEat, unlockAudio, playToySqueak, playSwish, playPlop]);
 };
 
-const createPet = (id: number, scale: number, name: string, canvas: HTMLCanvasElement | null, type: 'clownfish' | 'basslet'): PetState => {
+const createPet = (id: number, scale: number, name: string, canvas: HTMLCanvasElement, type: 'clownfish' | 'basslet'): PetState => {
   const now = Date.now();
   return {
     id, name, scale, type,
@@ -603,13 +602,13 @@ const createPet = (id: number, scale: number, name: string, canvas: HTMLCanvasEl
     cleanliness: 100, energy: 80, mood: 'happy', activity: 'idle',
     lastFed: now, lastPlayed: now, lastCleaned: now, lastSlept: now, lastBubbleAt: 0, lastAteAt: 0, lastToyInteraction: 0,
     isAlive: true, isSleeping: false, sleepProgress: 0,
-    x: canvas ? (canvas.width / 2) + (id - 2) * 100 : 200 + (id - 2) * 100, 
-    y: canvas ? (canvas.height / 2) + (Math.random() - 0.5) * 50 : 150 + (Math.random() - 0.5) * 50,
+    x: (canvas.width / 2) + (id - 2) * (canvas.width / 6),
+    y: (canvas.height / 2) + (Math.random() - 0.5) * 50,
     vx: 0, vy: 0, target: null, facing: 1, phase: Math.random() * Math.PI * 2, rotation: 0, state: 'swimming'
   };
 };
 
-const createInitialPets = (canvas: HTMLCanvasElement | null): PetState[] => {
+const createInitialPets = (canvas: HTMLCanvasElement): PetState[] => {
     return [
         createPet(1, 1.0, 'Aqua', canvas, 'clownfish'),
         createPet(2, 0.8, 'Bubbles', canvas, 'clownfish'),
@@ -640,6 +639,7 @@ const App: React.FC = () => {
         toy: null as {x: number, y: number} | null,
         cleaningAnimation: { active: false, startTime: 0, startCleanliness: [] as number[] },
         isInitialized: false,
+        isNewGame: false,
     });
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -671,6 +671,95 @@ const App: React.FC = () => {
             }
         }
     }, []);
+    
+    // Stage 1: Load data from storage (DOM-independent)
+    useEffect(() => {
+        let savedDataString: string | null = null;
+        try {
+            savedDataString = localStorage.getItem(SAVE_KEY);
+        } catch (e) {
+            console.error("Failed to read from localStorage. Starting a new game.", e);
+        }
+
+        const model = gameModelRef.current;
+
+        if (!savedDataString) {
+            console.log("No saved data found. Preparing new game.");
+            model.isNewGame = true;
+            setIsMuted(false);
+        } else {
+            try {
+                const savedData = JSON.parse(savedDataString);
+                const { lastSaveTime, pets: savedPets, food, poops, isMuted: savedMute } = savedData;
+
+                if (!savedPets || !Array.isArray(savedPets) || savedPets.length === 0) {
+                     throw new Error("Saved data is invalid or contains no pets.");
+                }
+
+                const now = Date.now();
+                const elapsedHours = (now - lastSaveTime) / (1000 * 60 * 60);
+
+                const poopCount = (poops || []).length;
+                const updatedPets = savedPets.map((pet: PetState) => {
+                    if (!pet.isAlive) return pet;
+
+                    const HUNGER_DECAY_PER_HOUR = 15;
+                    const HAPPINESS_DECAY_PER_HOUR = 10;
+                    const ENERGY_DECAY_PER_HOUR = 12;
+                    const ENERGY_REGEN_PER_HOUR = 25;
+                    const CLEANLINESS_DECAY_PER_POOP_PER_HOUR = 30;
+                    const HEALTH_DECAY_LOW_STATS_PER_HOUR = 10;
+                    const HEALTH_REGEN_HIGH_STATS_PER_HOUR = 5;
+
+                    if (pet.isSleeping || pet.activity === 'goingToSleep') {
+                        pet.energy = Math.min(100, pet.energy + ENERGY_REGEN_PER_HOUR * elapsedHours);
+                    } else {
+                        pet.energy = Math.max(0, pet.energy - ENERGY_DECAY_PER_HOUR * elapsedHours);
+                        pet.hunger = Math.max(0, pet.hunger - HUNGER_DECAY_PER_HOUR * elapsedHours);
+                        pet.happiness = Math.max(0, pet.happiness - HAPPINESS_DECAY_PER_HOUR * elapsedHours);
+                    }
+
+                    pet.cleanliness = Math.max(0, pet.cleanliness - (poopCount * CLEANLINESS_DECAY_PER_POOP_PER_HOUR) * elapsedHours);
+
+                    const avgStats = (pet.hunger + pet.happiness + pet.energy + pet.cleanliness) / 4;
+                    if (avgStats < 20) {
+                        pet.health = Math.max(0, pet.health - HEALTH_DECAY_LOW_STATS_PER_HOUR * elapsedHours);
+                    } else if (avgStats > 80) {
+                        pet.health = Math.min(100, pet.health + HEALTH_REGEN_HIGH_STATS_PER_HOUR * elapsedHours);
+                    }
+                    
+                    if (pet.health <= 0) {
+                        pet.isAlive = false;
+                    }
+
+                    pet.mood = calculateMood(pet);
+                    if (pet.activity === 'goingToSleep') {
+                        pet.activity = 'sleeping';
+                        pet.isSleeping = true;
+                    }
+                    pet.target = null;
+                    pet.vx = 0;
+                    pet.vy = 0;
+                    
+                    return pet;
+                });
+
+                model.pets = updatedPets;
+                model.food = food || [];
+                model.poops = poops || [];
+                setPets(updatedPets);
+                setIsMuted(savedMute ?? false);
+
+            } catch (error) {
+                console.error("Failed to load or parse saved data. Starting a new game.", error);
+                localStorage.removeItem(SAVE_KEY);
+                model.isNewGame = true;
+                setIsMuted(false);
+            }
+        }
+        
+        setIsLoading(false); // End loading, allows canvas to render
+    }, [calculateMood]);
     
     useEffect(() => {
         const onFullScreenChange = () => {
@@ -855,8 +944,9 @@ const App: React.FC = () => {
         }
     };
 
+    // Stage 2: Animation loop and canvas-dependent initialization
     useEffect(() => {
-        if (!sprite.isReady) return;
+        if (isLoading || !sprite.isReady) return;
         
         let animationId: number;
         let lastTime = 0;
@@ -867,114 +957,41 @@ const App: React.FC = () => {
             const model = gameModelRef.current;
             const canvas = canvasRef.current;
 
-            // --- INITIALIZE GAME ON FIRST RUN ---
-            if (!model.isInitialized) {
-                let savedDataString: string | null = null;
-                try {
-                    savedDataString = localStorage.getItem(SAVE_KEY);
-                } catch (e) {
-                    console.error("Failed to read from localStorage. Starting a new game.", e);
-                }
+            if (!canvas) return; // Wait until canvas is rendered.
 
-                if (!savedDataString) {
-                    console.log("No saved data found. Initializing new game.");
-                    const newPets = createInitialPets(null);
+            // --- ONE-TIME INITIALIZE (after canvas is ready) ---
+            if (!model.isInitialized) {
+                if (model.isNewGame) {
+                    const newPets = createInitialPets(canvas);
                     model.pets = newPets;
                     setPets(newPets);
-                    setIsMuted(false);
                 } else {
-                    try {
-                        const savedData = JSON.parse(savedDataString);
-                        const { lastSaveTime, pets: savedPets, food, poops, isMuted: savedMute } = savedData;
-
-                        if (!savedPets || !Array.isArray(savedPets) || savedPets.length === 0) {
-                             throw new Error("Saved data is invalid or contains no pets.");
-                        }
-
-                        const now = Date.now();
-                        const elapsedHours = (now - lastSaveTime) / (1000 * 60 * 60);
-
-                        const poopCount = (poops || []).length;
-                        const updatedPets = savedPets.map((pet: PetState) => {
-                            if (!pet.isAlive) return pet;
-
-                            const HUNGER_DECAY_PER_HOUR = 15;
-                            const HAPPINESS_DECAY_PER_HOUR = 10;
-                            const ENERGY_DECAY_PER_HOUR = 12;
-                            const ENERGY_REGEN_PER_HOUR = 25;
-                            const CLEANLINESS_DECAY_PER_POOP_PER_HOUR = 30;
-                            const HEALTH_DECAY_LOW_STATS_PER_HOUR = 10;
-                            const HEALTH_REGEN_HIGH_STATS_PER_HOUR = 5;
-
-                            if (pet.isSleeping || pet.activity === 'goingToSleep') {
-                                pet.energy = Math.min(100, pet.energy + ENERGY_REGEN_PER_HOUR * elapsedHours);
-                            } else {
-                                pet.energy = Math.max(0, pet.energy - ENERGY_DECAY_PER_HOUR * elapsedHours);
-                                pet.hunger = Math.max(0, pet.hunger - HUNGER_DECAY_PER_HOUR * elapsedHours);
-                                pet.happiness = Math.max(0, pet.happiness - HAPPINESS_DECAY_PER_HOUR * elapsedHours);
-                            }
-
-                            pet.cleanliness = Math.max(0, pet.cleanliness - (poopCount * CLEANLINESS_DECAY_PER_POOP_PER_HOUR) * elapsedHours);
-
-                            const avgStats = (pet.hunger + pet.happiness + pet.energy + pet.cleanliness) / 4;
-                            if (avgStats < 20) {
-                                pet.health = Math.max(0, pet.health - HEALTH_DECAY_LOW_STATS_PER_HOUR * elapsedHours);
-                            } else if (avgStats > 80) {
-                                pet.health = Math.min(100, pet.health + HEALTH_REGEN_HIGH_STATS_PER_HOUR * elapsedHours);
-                            }
-                            
-                            if (pet.health <= 0) {
-                                pet.isAlive = false;
-                            }
-
-                            pet.mood = calculateMood(pet);
-                            if (pet.activity === 'goingToSleep') {
-                                pet.activity = 'sleeping';
-                                pet.isSleeping = true;
-                            }
-                            pet.target = null;
-                            pet.vx = 0;
-                            pet.vy = 0;
-                            
-                            return pet;
-                        });
-
-                        model.pets = updatedPets;
-                        model.food = food || [];
-                        model.poops = poops || [];
-                        setPets(updatedPets);
-                        setIsMuted(savedMute ?? false);
-                    } catch (error) {
-                        console.error("Failed to load or parse saved data. Starting a new game.", error);
-                        localStorage.removeItem(SAVE_KEY);
-                        const newPets = createInitialPets(null);
-                        model.pets = newPets;
-                        setPets(newPets);
-                        setIsMuted(false);
-                    }
+                    // For loaded games, just ensure pets are within bounds
+                    model.pets.forEach(pet => {
+                        pet.x = Math.max(0, Math.min(canvas.width, pet.x));
+                        pet.y = Math.max(0, Math.min(canvas.height, pet.y));
+                    });
+                    setPets([...model.pets]);
                 }
                 
                 model.isInitialized = true;
-                setIsLoading(false);
                 lastTickTimeRef.current = time;
-                return; // End this frame here, next frame will have the correct state
+                lastTime = time; // Set lastTime to prevent a large initial dt
             }
             
             // --- MAIN GAME LOOP ---
-            if (!canvas) return; // Wait until canvas is rendered.
             
             // Robust Delta Time Calculation
             if (lastTime === 0) {
                 lastTime = time;
-                animationId = requestAnimationFrame(animate);
                 return;
             }
-            const dt = Math.min(0.1, (time - lastTime) / 1000); // Cap to prevent huge jumps
+            let dt = (time - lastTime) / 1000;
+            // Cap dt to prevent massive jumps on tab-out/in, but allow for small stutters.
+            // If dt is 0 or negative, skip frame.
+            if (dt <= 0) return;
+            dt = Math.min(0.1, dt);
             lastTime = time;
-            if (dt <= 0) { // Skip frame if time hasn't passed
-                animationId = requestAnimationFrame(animate);
-                return;
-            }
 
             const ctx = canvas.getContext('2d');
             if (!ctx) return;
@@ -983,8 +1000,6 @@ const App: React.FC = () => {
             canvas.height = canvas.clientHeight;
             const waterTopPx = canvas.height * (1-WATER_LEVEL);
             const sandY = canvas.height - SAND_HEIGHT;
-
-            if (model.pets.length === 0) return; // Wait until pets are loaded.
 
             // --- UPDATE LOGIC ---
             if (model.cleaningAnimation.active) {
@@ -1370,7 +1385,7 @@ const App: React.FC = () => {
         
         animationId = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(animationId);
-    }, [sprite.isReady, audio, calculateMood, isInPlayMode]);
+    }, [isLoading, sprite.isReady, audio, calculateMood, isInPlayMode]);
 
     const mainPet = pets[0];
     const isNightMode = pets.some(p => p.isAlive && (p.isSleeping || p.activity === 'goingToSleep'));
