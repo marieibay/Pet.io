@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PetState, Food, Bubble, Poop, Sprite, Mood, Ripple, Activity, Decoration } from './types';
 import Header from './components/Header';
@@ -621,6 +622,7 @@ const App: React.FC = () => {
     const [pets, setPets] = useState<PetState[]>([]);
     const [isMuted, setIsMuted] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
+    const [hasAttemptedFullscreen, setHasAttemptedFullscreen] = useState(false);
     const [isInPlayMode, setIsInPlayMode] = useState(false);
     const [isCleaning, setIsCleaning] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -1001,6 +1003,9 @@ const App: React.FC = () => {
                 }
             }
             
+            const activePetsForPlay = isInPlayMode && model.toy ? model.pets.filter(p => p.isAlive && !p.isSleeping) : [];
+            const numActivePets = activePetsForPlay.length;
+
             model.pets.forEach(livePet => {
               const desiredWidth = Math.min(120, Math.max(80, canvas.width * 0.3));
               const visualScale = (desiredWidth / sprite.fw);
@@ -1046,7 +1051,26 @@ const App: React.FC = () => {
 
                         if (!justAte) {
                             if (isInPlayMode && model.toy) {
-                                livePet.target = { x: model.toy.x, y: Math.max(waterTopPx + 20, model.toy.y), isToy: true };
+                                const activeIndex = activePetsForPlay.findIndex(p => p.id === livePet.id);
+                                if (activeIndex !== -1) {
+                                    // Distribute pets in a 180-degree semi-circle below the toy
+                                    const angle = (Math.PI * activeIndex) / Math.max(1, numActivePets - 1);
+                                    
+                                    // Add some variation to radius based on pet ID so they aren't in a perfect line
+                                    const baseRadius = 60;
+                                    const radiusVariation = (livePet.id % 3 - 1) * 15; // -15, 0, or 15
+                                    const effectiveRadius = baseRadius + radiusVariation;
+
+                                    // This creates a semi-circle arc below the toy
+                                    const targetX = model.toy.x - effectiveRadius * Math.cos(angle);
+                                    const targetY = model.toy.y + effectiveRadius * Math.sin(angle);
+
+                                    livePet.target = { 
+                                        x: targetX,
+                                        y: Math.max(waterTopPx + 20, targetY), 
+                                        isToy: true 
+                                    };
+                                }
                             } else {
                                 if (livePet.target?.isToy) livePet.target = null;
 
@@ -1336,6 +1360,14 @@ const App: React.FC = () => {
     }, [sprite.isReady, audio, calculateMood, isInPlayMode, pets]);
 
     const mainPet = pets[0];
+    
+    const handleFirstInteraction = useCallback(() => {
+        audio.unlockAudio();
+        if (!document.fullscreenElement && !hasAttemptedFullscreen) {
+            toggleFullScreen();
+            setHasAttemptedFullscreen(true);
+        }
+    }, [audio, hasAttemptedFullscreen, toggleFullScreen]);
 
     if (isLoading) {
         return (
@@ -1349,14 +1381,12 @@ const App: React.FC = () => {
     }
 
     return (
-        <div id="app-container" className="h-screen flex justify-center p-2" onClick={audio.unlockAudio}>
+        <div id="app-container" className="h-screen flex justify-center p-2" onClick={handleFirstInteraction}>
             <main className="w-full ui-container">
                 <Header 
                     className="header" 
                     isMuted={isMuted} 
                     onToggleMute={() => setIsMuted(m => !m)}
-                    isFullscreen={isFullscreen}
-                    onToggleFullScreen={toggleFullScreen}
                 />
                 <div className="ui-panel relative p-0 overflow-hidden flex-1 min-h-0 touch-none canvas-container">
                     <canvas 
