@@ -959,14 +959,25 @@ const App: React.FC = () => {
 
             if (!canvas) return; // Wait until canvas is rendered.
 
-            // --- ONE-TIME INITIALIZE (after canvas is ready) ---
+            // On every frame, check if the canvas size needs to be updated for responsiveness.
+            if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
+                canvas.width = canvas.clientWidth;
+                canvas.height = canvas.clientHeight;
+            }
+            
+            // Wait until the canvas has been laid out by the browser and has a non-zero size.
+            if (canvas.width === 0 || canvas.height === 0) {
+                return;
+            }
+
+            // --- ONE-TIME INITIALIZE (after canvas is ready and sized) ---
             if (!model.isInitialized) {
                 if (model.isNewGame) {
                     const newPets = createInitialPets(canvas);
                     model.pets = newPets;
                     setPets(newPets);
                 } else {
-                    // For loaded games, just ensure pets are within bounds
+                    // For loaded games, just ensure pets are within bounds of the current canvas size
                     model.pets.forEach(pet => {
                         pet.x = Math.max(0, Math.min(canvas.width, pet.x));
                         pet.y = Math.max(0, Math.min(canvas.height, pet.y));
@@ -996,8 +1007,6 @@ const App: React.FC = () => {
             const ctx = canvas.getContext('2d');
             if (!ctx) return;
             
-            canvas.width = canvas.clientWidth;
-            canvas.height = canvas.clientHeight;
             const waterTopPx = canvas.height * (1-WATER_LEVEL);
             const sandY = canvas.height - SAND_HEIGHT;
 
@@ -1410,7 +1419,7 @@ const App: React.FC = () => {
     }
 
     return (
-        <div id="app-container" className="h-screen flex justify-center p-2" onClick={handleFirstInteraction}>
+        <div id="app-container" className="h-screen flex justify-center p-2" onPointerDown={handleFirstInteraction}>
             <main className="w-full ui-container">
                 <Header 
                     className="header" 
