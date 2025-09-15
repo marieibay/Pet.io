@@ -961,23 +961,30 @@ const App: React.FC = () => {
             }
             
             // --- MAIN GAME LOOP ---
-            // Wait until canvas is rendered before running game logic.
-            if (!canvas) return;
+            if (!canvas) return; // Wait until canvas is rendered.
+            
+            // Robust Delta Time Calculation
+            if (lastTime === 0) {
+                lastTime = time;
+                animationId = requestAnimationFrame(animate);
+                return;
+            }
+            const dt = Math.min(0.1, (time - lastTime) / 1000); // Cap to prevent huge jumps
+            lastTime = time;
+            if (dt <= 0) { // Skip frame if time hasn't passed
+                animationId = requestAnimationFrame(animate);
+                return;
+            }
 
             const ctx = canvas.getContext('2d');
             if (!ctx) return;
-
-            if(lastTime === 0) lastTime = time;
-            const dt = (time - lastTime) / 1000;
-            lastTime = time;
             
             canvas.width = canvas.clientWidth;
             canvas.height = canvas.clientHeight;
             const waterTopPx = canvas.height * (1-WATER_LEVEL);
             const sandY = canvas.height - SAND_HEIGHT;
 
-            // Wait until pets are loaded before running game logic.
-            if (model.pets.length === 0) return;
+            if (model.pets.length === 0) return; // Wait until pets are loaded.
 
             // --- UPDATE LOGIC ---
             if (model.cleaningAnimation.active) {
