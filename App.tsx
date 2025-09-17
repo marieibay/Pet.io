@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PetState, Food, Bubble, Poop, Sprite, Mood, Ripple, Activity, Decoration } from './types';
 import Header from './components/Header';
@@ -7,6 +8,15 @@ import StatusBar from './components/StatusBar';
 const WATER_LEVEL = 1.0;
 const SAND_HEIGHT = 20;
 const SAVE_KEY = 'petio_save_data';
+
+// --- Stat Decay Constants ---
+const HUNGER_DECAY_PER_HOUR = 15;
+const HAPPINESS_DECAY_PER_HOUR = 10;
+const ENERGY_DECAY_PER_HOUR = 12;
+const ENERGY_REGEN_PER_HOUR = 25;
+const CLEANLINESS_DECAY_PER_POOP_PER_HOUR = 30;
+const HEALTH_DECAY_LOW_STATS_PER_HOUR = 10;
+const HEALTH_REGEN_HIGH_STATS_PER_HOUR = 5;
 
 
 // --- ART ASSETS & RENDERING ---
@@ -189,7 +199,7 @@ function drawPet(ctx: CanvasRenderingContext2D, pet: PetState, sprite: Sprite, c
   const bob = Math.sin((performance.now() * 0.001) + pet.phase) * amp;
 
   ctx.save();
-  ctx.translate(pet.x, pet.y + bob);
+  ctx.translate(pet.x, pet.y + (pet.isAlive ? bob : 0));
   if (!pet.isAlive) ctx.rotate(Math.PI);
   ctx.rotate(pet.rotation);
   if (flip && col !== 2) ctx.scale(-1, 1);
@@ -703,14 +713,6 @@ const App: React.FC = () => {
                 const updatedPets = savedPets.map((pet: PetState) => {
                     if (!pet.isAlive) return pet;
 
-                    const HUNGER_DECAY_PER_HOUR = 15;
-                    const HAPPINESS_DECAY_PER_HOUR = 10;
-                    const ENERGY_DECAY_PER_HOUR = 12;
-                    const ENERGY_REGEN_PER_HOUR = 25;
-                    const CLEANLINESS_DECAY_PER_POOP_PER_HOUR = 30;
-                    const HEALTH_DECAY_LOW_STATS_PER_HOUR = 10;
-                    const HEALTH_REGEN_HIGH_STATS_PER_HOUR = 5;
-
                     if (pet.isSleeping || pet.activity === 'goingToSleep') {
                         pet.energy = Math.min(100, pet.energy + ENERGY_REGEN_PER_HOUR * elapsedHours);
                     } else {
@@ -730,6 +732,7 @@ const App: React.FC = () => {
                     
                     if (pet.health <= 0) {
                         pet.isAlive = false;
+                        pet.health = 0;
                     }
 
                     pet.mood = calculateMood(pet);
@@ -1211,6 +1214,20 @@ const App: React.FC = () => {
                   livePet.target = null;
                   livePet.lastAteAt = time;
                 }
+              } else {
+                // Logic for dead pets: gentle float upwards
+                livePet.target = null;
+                livePet.vy = -15; // Set a constant upward velocity
+                livePet.vx *= 0.95; // Dampen horizontal velocity
+
+                livePet.y += livePet.vy * dt;
+                livePet.x += livePet.vx * dt;
+
+                // A little sway
+                livePet.x += Math.sin(time / 1000 + livePet.id) * 0.2;
+
+                // Keep rotation at 0 so the drawPet flip is predictable
+                livePet.rotation = 0;
               }
             });
 
@@ -1256,24 +1273,42 @@ const App: React.FC = () => {
         
             // Slow tick for stat decay & UI sync
             if (time - lastTickTimeRef.current > 5000) {
+                const tickIntervalSeconds = 5;
+                const ticksPerHour = 3600 / tickIntervalSeconds;
+
                 lastTickTimeRef.current = time;
                 model.pets.forEach(livePet => {
                     if (!livePet.isAlive) return;
+
+                    const hungerDecay = HUNGER_DECAY_PER_HOUR / ticksPerHour;
+                    const happinessDecay = HAPPINESS_DECAY_PER_HOUR / ticksPerHour;
+                    const energyDecay = ENERGY_DECAY_PER_HOUR / ticksPerHour;
+                    const energyRegen = ENERGY_REGEN_PER_HOUR / ticksPerHour;
+                    const cleanlinessDecay = (model.poops.length * CLEANLINESS_DECAY_PER_POOP_PER_HOUR) / ticksPerHour;
+                    const healthDecay = HEALTH_DECAY_LOW_STATS_PER_HOUR / ticksPerHour;
+                    const healthRegen = HEALTH_REGEN_HIGH_STATS_PER_HOUR / ticksPerHour;
+
                     if (!livePet.isSleeping) {
-                        livePet.hunger = Math.max(0, livePet.hunger - 1.5);
-                        livePet.happiness = Math.max(0, livePet.happiness - 1);
-                        livePet.energy = Math.max(0, livePet.energy - 0.8);
+                        livePet.hunger = Math.max(0, livePet.hunger - hungerDecay);
+                        livePet.happiness = Math.max(0, livePet.happiness - happinessDecay);
+                        livePet.energy = Math.max(0, livePet.energy - energyDecay);
                         if (model.poops.length > 0) {
-                            livePet.cleanliness = Math.max(0, livePet.cleanliness - (model.poops.length * 2.5));
+                            livePet.cleanliness = Math.max(0, livePet.cleanliness - cleanlinessDecay);
                         }
                     } else if (livePet.isSleeping) {
-                        livePet.energy = Math.min(100, livePet.energy + 2);
+                        livePet.energy = Math.min(100, livePet.energy + energyRegen);
                     }
-                    const avgStats = (livePet.hunger+livePet.happiness+livePet.energy+livePet.cleanliness)/4;
-                    if(avgStats < 20) livePet.health = Math.max(0, livePet.health - 1);
-                    else if (avgStats > 80) livePet.health = Math.min(100, livePet.health + 0.5);
+                    const avgStats = (livePet.hunger + livePet.happiness + livePet.energy + livePet.cleanliness) / 4;
+                    if (avgStats < 20) {
+                        livePet.health = Math.max(0, livePet.health - healthDecay);
+                    } else if (avgStats > 80) {
+                        livePet.health = Math.min(100, livePet.health + healthRegen);
+                    }
                     livePet.mood = calculateMood(livePet);
-                    if(livePet.health <= 0) livePet.isAlive = false;
+                    if (livePet.health <= 0) {
+                        livePet.isAlive = false;
+                        livePet.health = 0;
+                    }
                 });
                 
                 for (let i = 0; i < model.pets.length; i++) {
@@ -1398,6 +1433,7 @@ const App: React.FC = () => {
 
     const mainPet = pets[0];
     const isNightMode = pets.some(p => p.isAlive && (p.isSleeping || p.activity === 'goingToSleep'));
+    const isGameOver = !mainPet || !mainPet.isAlive;
     
     const handleFirstInteraction = useCallback(() => {
         audio.unlockAudio();
@@ -1406,6 +1442,15 @@ const App: React.FC = () => {
             setHasAttemptedFullscreen(true);
         }
     }, [audio, hasAttemptedFullscreen, toggleFullScreen]);
+
+    const handleRestart = () => {
+        try {
+            localStorage.removeItem(SAVE_KEY);
+        } catch (e) {
+            console.error("Failed to remove save data", e);
+        }
+        window.location.reload();
+    };
 
     if (isLoading) {
         return (
@@ -1440,25 +1485,32 @@ const App: React.FC = () => {
                     <div className="ui-panel text-center text-xl text-yellow-400 tracking-wider">
                          {`MOOD: ${mainPet?.isAlive ? (mainPet?.mood.toUpperCase() ?? '') : "X_X"}`}
                     </div>
-                    {mainPet?.isAlive && (
+                    {mainPet?.isAlive ? (
                         <div className="ui-panel grid grid-cols-2 gap-x-4 gap-y-2">
                             <StatusBar label="Hunger" value={mainPet.hunger} icon={<i className="fas fa-drumstick-bite"></i>} />
                             <StatusBar label="Happy" value={mainPet.happiness} icon={<i className="fas fa-smile"></i>} />
                             <StatusBar label="Energy" value={mainPet.energy} icon={<i className="fas fa-bolt"></i>} />
                             <StatusBar label="Clean" value={mainPet.cleanliness} icon={<i className="fas fa-shower"></i>} />
                         </div>
-                    )}
+                    ) : mainPet ? (
+                        <div className="ui-panel text-center text-red-400 p-2">
+                            <p className="text-base mb-2 leading-tight">Oh no! Your pets have become inactive from poor health.</p>
+                             <button onClick={handleRestart} className="ui-button w-full mt-1">
+                                 RESTART
+                             </button>
+                        </div>
+                    ) : null}
                     <div className="grid grid-cols-3 gap-3">
-                        <button onClick={handlePlay} className="ui-button flex flex-col items-center justify-center gap-1">
+                        <button onClick={handlePlay} disabled={isGameOver} className="ui-button flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
                             <i className="fas fa-gamepad text-2xl"></i><span>{isInPlayMode ? 'STOP' : 'PLAY'}</span>
                         </button>
                         <button 
                             onClick={handleClean} 
-                            disabled={isCleaning}
+                            disabled={isCleaning || isGameOver}
                             className="ui-button flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
                             <i className="fas fa-soap text-2xl"></i><span>CLEAN</span>
                         </button>
-                        <button onClick={handleLights} className="ui-button flex flex-col items-center justify-center gap-1">
+                        <button onClick={handleLights} disabled={isGameOver} className="ui-button flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
                             <i className={`fas ${isNightMode ? 'fa-sun' : 'fa-lightbulb'} text-2xl`}></i>
                             <span>{isNightMode ? 'WAKE' : 'SLEEP'}</span>
                         </button>
